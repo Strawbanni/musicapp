@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MusicApp</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo"><span class="logo-icon">♪</span> MusicApp</div>
+    <nav>
+      <div class="nav-group">Online Music</div>
+      <a class="nav-item active" data-view="home">🎵 Featured</a>
+      <a class="nav-item" data-view="library">🎼 Music Library</a>
+      <a class="nav-item" data-view="home">📻 Radio</a>
+      <a class="nav-item" data-view="home">🎬 Videos</a>
+      <div class="nav-group">My Music</div>
+      <a class="nav-item" data-view="home">❤️ Liked</a>
+      <a class="nav-item" data-view="home">🕘 Recent</a>
+      <a class="nav-item" data-view="profile" data-auth>👤 My Account</a>
+      <div class="nav-group admin-only hidden">Admin</div>
+      <a class="nav-item admin-only hidden" data-view="music">💿 Music Management</a>
+      <a class="nav-item admin-only hidden" data-view="users">🛠️ User Management</a>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="topbar">
+      <div class="search">
+        <span>🔍</span><input id="globalSearch" placeholder="Search songs or artists, press Enter" />
+      </div>
+      <div class="user-area" id="userArea"></div>
+    </header>
+
+    <main class="content">
+      <!-- Home -->
+      <section class="view" id="view-home">
+        <h1 class="page-title">Featured</h1>
+        <div class="banner">Discover new music every day</div>
+        <div class="section-head">
+          <h2 class="section-title">New Releases</h2>
+          <button class="btn sm" id="homePlayAll">▶ Play all</button>
+        </div>
+        <div class="grid" id="homeGrid"></div>
+        <div id="homeGenreSection" class="hidden">
+          <h2 class="section-title">Browse by Genre</h2>
+          <div class="chips" id="homeGenres"></div>
+        </div>
+      </section>
+
+      <!-- Music library (public) -->
+      <section class="view hidden" id="view-library">
+        <h1 class="page-title">Music Library</h1>
+        <div class="toolbar">
+          <input id="libKeyword" placeholder="Search title / artist" />
+          <select id="libGenre" data-genre-select><option value="">All genres</option></select>
+          <select id="libSort">
+            <option value="newest">Newest added</option>
+            <option value="release">Release date</option>
+            <option value="title">Title A–Z</option>
+            <option value="artist">Artist A–Z</option>
+          </select>
+          <button class="btn primary" id="libSearchBtn">Search</button>
+          <span class="spacer"></span>
+          <button class="btn" id="libPlayAll">▶ Play all</button>
+        </div>
+        <table class="table tracks">
+          <thead>
+          <tr><th class="idx">#</th><th>Title</th><th>Artist</th><th>Genre</th><th>Release date</th></tr>
+          </thead>
+          <tbody id="libraryTbody"></tbody>
+        </table>
+        <div class="pager" id="libraryPager"></div>
+      </section>
+
+      <!-- Profile -->
+      <section class="view hidden" id="view-profile">
+        <h1 class="page-title">My Account</h1>
+        <div class="profile-card">
+          <div class="avatar big" id="profileAvatar"></div>
+          <div class="profile-info">
+            <div class="profile-name" id="profileName"></div>
+            <div class="muted">User ID: <span id="profileId"></span> · Registered <span id="profileCreated"></span></div>
+          </div>
+        </div>
+
+        <div class="panels">
+          <form class="panel" id="emailForm">
+            <h3>Profile</h3>
+            <label>Email<input name="email" type="email" required /></label>
+            <button class="btn primary" type="submit">Save</button>
+          </form>
+          <form class="panel" id="passwordForm">
+            <h3>Change Password</h3>
+            <label>Current password<input name="old_password" type="password" required /></label>
+            <label>New password<input name="new_password" type="password" minlength="6" required /></label>
+            <label>Confirm new password<input name="confirm" type="password" minlength="6" required /></label>
+            <button class="btn primary" type="submit">Update password</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Admin: music -->
+      <section class="view hidden" id="view-music">
+        <h1 class="page-title">Music Management</h1>
+        <div class="toolbar">
+          <input id="musicKeyword" placeholder="Search title / artist" />
+          <select id="musicGenre" data-genre-select><option value="">All genres</option></select>
+          <button class="btn primary" id="musicSearchBtn">Search</button>
+          <span class="spacer"></span>
+          <button class="btn" id="musicAddBtn">+ New track</button>
+        </div>
+        <table class="table tracks">
+          <thead>
+          <tr><th>ID</th><th>Title</th><th>Artist</th><th>Genre</th><th>Release date</th><th>Added</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="musicTbody"></tbody>
+        </table>
+        <div class="pager" id="musicPager"></div>
+      </section>
+
+      <!-- Admin: users -->
+      <section class="view hidden" id="view-users">
+        <h1 class="page-title">User Management</h1>
+        <div class="toolbar">
+          <input id="userKeyword" placeholder="Search username / email" />
+          <select id="userStatus">
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <button class="btn primary" id="userSearchBtn">Search</button>
+          <span class="spacer"></span>
+          <button class="btn" id="userAddBtn">+ New user</button>
+        </div>
+        <table class="table">
+          <thead>
+          <tr><th>ID</th><th>Username</th><th>Email</th><th>Status</th><th>Registered</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="userTbody"></tbody>
+        </table>
+        <div class="pager" id="userPager"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Player bar -->
+  <footer class="player">
+    <div class="now-playing">
+      <div class="cover" id="npCover"></div>
+      <div class="np-text">
+        <div class="ellipsis" id="npTitle">Not playing</div>
+        <div class="muted small ellipsis" id="npArtist">—</div>
+      </div>
+    </div>
+    <div class="controls">
+      <div>
+        <button id="prevBtn" title="Previous">⏮</button><button class="play" id="playBtn" title="Play / pause (Space)">▶</button><button id="nextBtn" title="Next">⏭</button>
+      </div>
+      <div class="progress-row">
+        <span class="small muted" id="curTime">0:00</span>
+        <div class="progress" id="progress"><div class="bar" id="progressBar"></div></div>
+        <span class="small muted" id="durTime">0:00</span>
+      </div>
+    </div>
+    <div class="extra"><span class="muted">🔊</span><input type="range" id="volume" min="0" max="1" step="0.01" value="0.8" title="Volume" /></div>
+  </footer>
+</div>
+
+<!-- Auth modal -->
+<div class="modal hidden" id="authModal">
+  <div class="modal-box">
+    <button class="modal-close" data-close>×</button>
+    <div class="tabs">
+      <button class="tab active" data-tab="login">Log in</button>
+      <button class="tab" data-tab="register">Sign up</button>
+    </div>
+    <form id="loginForm" class="auth-form">
+      <input name="account" placeholder="Username or email" required />
+      <input name="password" type="password" placeholder="Password" required />
+      <label class="check"><input type="checkbox" name="remember" /> Keep me logged in for 7 days</label>
+      <button class="btn primary block" type="submit">Log in</button>
+    </form>
+    <form id="registerForm" class="auth-form hidden">
+      <input name="username" placeholder="Username (3-32 chars)" required />
+      <input name="email" type="email" placeholder="Email" required />
+      <input name="password" type="password" placeholder="Password (6+ chars)" minlength="6" required />
+      <input name="confirm" type="password" placeholder="Confirm password" minlength="6" required />
+      <button class="btn primary block" type="submit">Create account</button>
+    </form>
+  </div>
+</div>
+
+<!-- Admin edit modal -->
+<div class="modal hidden" id="editModal">
+  <div class="modal-box">
+    <button class="modal-close" data-close>×</button>
+    <h3 id="editTitle">Edit user</h3>
+    <form id="editForm" class="auth-form">
+      <input name="user_id" type="hidden" />
+      <label>Username<input name="username" required /></label>
+      <label>Email<input name="email" type="email" required /></label>
+      <label>Password<input name="password" type="password" placeholder="Leave blank to keep unchanged" /></label>
+      <label class="check"><input type="checkbox" name="is_active" checked /> Active</label>
+      <button class="btn primary block" type="submit">Save</button>
+    </form>
+  </div>
+</div>
+
+<!-- Admin music create / edit modal -->
+<div class="modal hidden" id="musicModal">
+  <div class="modal-box wide">
+    <button class="modal-close" data-close>×</button>
+    <h3 id="musicEditTitle">New track</h3>
+    <form id="musicForm" class="auth-form">
+      <div class="music-form">
+        <div class="cover-col">
+          <div class="cover-preview empty-cover" id="coverPreview"></div>
+          <label class="file-btn btn sm">Choose cover<input name="cover_image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden /></label>
+          <label class="check small hidden" id="removeCoverRow"><input type="checkbox" name="remove_cover" /> Remove cover</label>
+        </div>
+        <div class="fields-col">
+          <label>Title *<input name="title" maxlength="200" required /></label>
+          <label>Artist *<input name="artist" maxlength="120" required /></label>
+          <div class="row">
+            <label>Genre<input name="genre" maxlength="50" list="genreList" placeholder="e.g. Pop" /></label>
+            <label>Release date<input name="release_date" type="date" /></label>
+          </div>
+        </div>
+      </div>
+      <label>Audio file
+        <input name="audio_file" type="file" accept="audio/*,.mp3,.wav,.ogg,.oga,.flac,.m4a,.aac,.webm" />
+        <span class="small muted" id="audioHint"></span>
+      </label>
+      <datalist id="genreList"></datalist>
+      <button class="btn primary block" type="submit" id="musicSaveBtn">Save</button>
+    </form>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
