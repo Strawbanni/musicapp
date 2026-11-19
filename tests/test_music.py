@@ -59,7 +59,8 @@ def test_create_list_and_stream(admin, app, tmp_path):
 
 
 def test_validation(admin):
-    assert create(admin, title="  ").status_code == 400
+    r = create(admin, artist="  ")  # untagged file: nothing to fall back to
+    assert r.status_code == 400 and "Artist" in r.json["msg"]
     assert create(admin, release_date="2024-13-01").status_code == 400
     assert create(admin, audio_file=upload("evil.exe")).status_code == 400
     assert create(admin, cover_image=upload("x.mp3")).status_code == 400
@@ -100,3 +101,81 @@ def test_update_replaces_files_and_delete_cleans_up(admin, tmp_path):
 def test_media_rejects_bad_paths(client):
     assert client.get("/media/secret/x.mp3").status_code == 404
     assert client.get("/media/audio/../../app.py").status_code == 404
+
+
+def test_lyrics_create_update_clear(admin):
+    lyrics = "[00:01.00]First line\r\n[00:05.50]第二行\r\n"
+    m = create(admin, lyrics=lyrics).json["data"]
+    assert m["lyrics"] == "[00:01.00]First line\n[00:05.50]第二行" and m["has_lyrics"] is True
+
+    # The list stays light: only a flag; the detail endpoint carries the text.
+    item = admin.get("/api/music").json["data"]["items"][0]
+    assert "lyrics" not in item and item["has_lyrics"] is True
+    assert admin.get(f"/api/music/{m['id']}").json["data"]["lyrics"].endswith("第二行")
+
+    # Lyrics-only update leaves everything else alone.
+    r = admin.put(f"/api/music/{m['id']}", data={"lyrics": "New words"}, content_type="multipart/form-data")
+    assert r.status_code == 200 and r.json["data"]["lyrics"] == "New words" and r.json["data"]["title"] == "Song A"
+    # Updates without the field keep the lyrics.
+    r = admin.put(f"/api/music/{m['id']}", data={"genre": "Rock"}, content_type="multipart/form-data")
+    assert r.json["data"]["lyrics"] == "New words"
+    # An empty value clears them.
+    r = admin.put(f"/api/music/{m['id']}", data={"lyrics": "  "}, content_type="multipart/form-data")
+    assert r.json["data"]["lyrics"] is None and r.json["data"]["has_lyrics"] is False
+
+
+def test_lyrics_length_limit(admin):
+    r = create(admin, lyrics="x" * 10_001)
+    assert r.status_code == 400 and "Lyrics" in r.json["msg"]
+    assert create(admin, lyrics="x" * 10_000).status_code == 201
+
+
+# ---------- likes ----------
+
+def register(c, name):
+    r = c.post("/api/auth/register", json={
+        "username": name, "email": f"{name}@x.com", "password": "secret1", "confirm": "secret1"})
+    assert r.status_code in (200, 201), r.json
+    return c
+
+
+def test_like_unlike_and_count(admin, app):
+    mid = create(admin).json["data"]["id"]
+    d = admin.get(f"/api/music/{mid}").json["data"]
+    assert d["like_count"] == 0 and d["liked"] is False
+
+    r = admin.put(f"/api/music/{mid}/like")
+    assert r.status_code == 200 and r.json["data"] == {"like_count": 1, "liked": True}
+    # Liking twice is a no-op.
+    assert admin.put(f"/api/music/{mid}/like").json["data"] == {"like_count": 1, "liked": True}
+
+    other = register(app.test_client(), "bob")
+    assert other.put(f"/api/music/{mid}/like").json["data"] == {"like_count": 2, "liked": True}
+    assert other.delete(f"/api/music/{mid}/like").json["data"] == {"like_count": 1, "liked": False}
+    assert other.delete(f"/api/music/{mid}/like").json["data"] == {"like_count": 1, "liked": False}
+
+    # The count is public; `liked` is per user.
+    anon = app.test_client().get(f"/api/music/{mid}").json["data"]
+    assert anon["like_count"] == 1 and anon["liked"] is False
+    assert admin.get(f"/api/music/{mid}").json["data"]["liked"] is True
+
+
+def test_like_requires_login_and_existing_track(admin, app):
+    mid = create(admin).json["data"]["id"]
+    assert app.test_client().put(f"/api/music/{mid}/like").status_code == 401
+    assert admin.put("/api/music/9999/like").status_code == 404
+
+
+def test_likes_removed_with_track_and_user(admin, app):
+    from backend.models import MusicLike
+    mid = create(admin).json["data"]["id"]
+    bob = register(app.test_client(), "bob")
+    bob.put(f"/api/music/{mid}/like")
+    admin.put(f"/api/music/{mid}/like")
+    bob_id = bob.get("/api/auth/me").json["data"]["user_id"]
+
+    assert admin.delete(f"/api/users/{bob_id}").status_code == 200
+    assert admin.get(f"/api/music/{mid}").json["data"]["like_count"] == 1
+    assert admin.delete(f"/api/music/{mid}").status_code == 200
+    with app.app_context():
+        assert MusicLike.query.count() == 0

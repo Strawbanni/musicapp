@@ -3,6 +3,7 @@ import { $, $$, api, canAccess, navigate, onLoginRequired, setUser, state } from
 import { openAuth, renderUser } from "./auth.js";
 import { openLibrary } from "./music.js";
 import "./player.js";
+import "./detail.js";
 import "./users.js";
 
 onLoginRequired(() => openAuth("login"));

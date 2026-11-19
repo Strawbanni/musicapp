@@ -4,6 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, send_from_directory
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
 
 from .common import fail
@@ -66,6 +67,7 @@ def create_app(test_config=None):
 
     with app.app_context():
         db.create_all()
+        _upgrade_schema(app)
         _seed_admin(app)
 
     @app.get("/")
@@ -73,6 +75,23 @@ def create_app(test_config=None):
         return send_from_directory(FRONTEND_DIR, "index.html")
 
     return app
+
+
+# Columns added after a table was first created. db.create_all() never alters existing
+# tables, so add them here (works on MySQL and SQLite). Format: (table, column, DDL type).
+_ADDED_COLUMNS = [
+    ("music", "duration", "INTEGER NULL"),
+    ("music", "lyrics", "TEXT NULL"),  # TEXT = 64 KB on MySQL; lyrics are capped at 10,000 chars
+]
+
+
+def _upgrade_schema(app):
+    insp = inspect(db.engine)
+    for table, column, ddl in _ADDED_COLUMNS:
+        if column not in {c["name"] for c in insp.get_columns(table)}:
+            app.logger.warning("Adding missing column %s.%s", table, column)
+            with db.engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
 
 def _seed_admin(app):
