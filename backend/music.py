@@ -3,6 +3,7 @@
 Public:  GET /api/music, GET /api/music/genres, GET /api/music/<id>
          GET /media/audio/<file>, GET /media/covers/<file>
 User:    PUT /api/music/<id>/like, DELETE /api/music/<id>/like (idempotent like / unlike)
+Comments on a track: see comments.py (target_type="music"); they are removed with the track.
 Admin:   POST /api/music/inspect, POST /api/music, PUT /api/music/<id>, DELETE /api/music/<id>
 
 Create/update take multipart/form-data with fields
@@ -32,6 +33,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from .audiometa import read_metadata
+from .comments import delete_target_comments
 from .common import admin_required, current_user, fail, login_required, ok, paginate_args
 from .models import Music, MusicLike, db
 
@@ -354,6 +356,7 @@ def delete_music(_admin, mid):
     if music is None:
         return fail("Track not found", 404)
     audio, cover = music.audio_file, music.cover_image
+    delete_target_comments("music", mid)  # comments have no FK to the track (targetId is polymorphic)
     db.session.delete(music)
     db.session.commit()
     delete_upload(audio, "audio")

@@ -80,3 +80,40 @@ class MusicLike(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True)
     music_id = db.Column(db.Integer, db.ForeignKey("music.id", ondelete="CASCADE"), primary_key=True, index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.now)
+
+
+class Comment(db.Model):
+    """A comment on a target (e.g. a track), or a reply to another comment.
+
+    Column names follow the requested schema (userId, targetType, ...); Python attributes are
+    snake_case like the rest of the models. Replies copy their root's target so a whole thread can
+    be fetched by (targetType, targetId). Nesting depth is unlimited: parentId points at any comment.
+    targetId has no foreign key because it is polymorphic; comments are removed by the app when
+    their target is deleted (see comments.delete_comment_trees).
+    """
+    __tablename__ = "comments"
+    __table_args__ = (
+        db.Index("ix_comments_target", "targetType", "targetId", "parentId"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column("userId", db.Integer, db.ForeignKey("users.user_id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    target_type = db.Column("targetType", db.String(20), nullable=False)
+    target_id = db.Column("targetId", db.Integer, nullable=False)
+    publish_time = db.Column("publishTime", db.DateTime, nullable=False, default=datetime.now)
+    content = db.Column(db.Text, nullable=False)
+    parent_id = db.Column("parentId", db.Integer, db.ForeignKey("comments.id", ondelete="CASCADE"),
+                          nullable=True, index=True)
+
+    def to_dict(self, username=None) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "username": username,
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "parent_id": self.parent_id,
+            "content": self.content,
+            "publish_time": self.publish_time.strftime("%Y-%m-%d %H:%M:%S"),
+        }

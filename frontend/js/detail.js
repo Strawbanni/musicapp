@@ -1,7 +1,8 @@
 // Track detail page: opened by clicking the cover in the player bar. Shows the current track's
-// info, like button/count and lyrics; LRC lyrics follow playback and can be clicked to seek.
+// info, like button/count, lyrics and comments (comments.js); LRC lyrics follow playback and can be clicked to seek.
 import { $, api, coverStyle, esc, fmtTime, navigate, registerView, state, toast } from "./core.js";
 import { openAuth } from "./auth.js";
+import { showComments } from "./comments.js";
 import { currentTime, currentTrack, isPlaying, onProgress, seek, togglePlay } from "./player.js";
 
 const detail = { track: null, lines: [], synced: false, active: -1, backTo: "home" };
@@ -123,6 +124,7 @@ async function showTrack(track) {
   const seq = ++loadSeq;
   detail.track = cache.get(track.id) || track;
   renderDetail();
+  showComments(track.id);
   if (!cache.has(track.id)) {
     $("#detailLyrics").innerHTML = `<div class="empty">Loading lyrics…</div>`;
     try {

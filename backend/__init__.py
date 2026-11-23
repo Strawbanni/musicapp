@@ -7,6 +7,7 @@ from flask import Flask, send_from_directory
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
 
+from .comments import bp as comments_bp
 from .common import fail
 from .models import User, db
 from .music import bp as music_bp
@@ -53,6 +54,7 @@ def create_app(test_config=None):
     db.init_app(app)
     app.register_blueprint(users_bp)
     app.register_blueprint(music_bp)
+    app.register_blueprint(comments_bp)
 
     @app.errorhandler(413)
     def too_large(_e):
