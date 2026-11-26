@@ -1,6 +1,6 @@
 import pytest
 
-from backend.models import Comment
+from backend.models import Comment, Like
 from test_music import admin, app, client, create, register  # noqa: F401  (fixtures)
 
 
@@ -131,3 +131,66 @@ def test_comments_removed_with_track_and_user(admin, app, track):
     assert admin.delete(f"/api/music/{track}").status_code == 200
     with app.app_context():
         assert Comment.query.count() == 0
+
+
+# ---------- likes ----------
+
+def test_like_multiple_comments(admin, app, track):
+    bob = register(app.test_client(), "bob")
+    root = comment(admin, track, "first")
+    other = comment(admin, track, "second")
+    r1 = reply(bob, root["id"])
+    assert root["like_count"] == 0 and root["liked"] is False
+
+    # A user can like any number of comments, including replies; liking twice is a no-op.
+    for cid in (root["id"], other["id"], r1["id"]):
+        r = bob.put(f"/api/comments/{cid}/like")
+        assert r.status_code == 200 and r.json["data"] == {"like_count": 1, "liked": True}
+    assert bob.put(f"/api/comments/{root['id']}/like").json["data"] == {"like_count": 1, "liked": True}
+    assert admin.put(f"/api/comments/{root['id']}/like").json["data"] == {"like_count": 2, "liked": True}
+    assert admin.delete(f"/api/comments/{root['id']}/like").json["data"] == {"like_count": 1, "liked": False}
+    assert admin.delete(f"/api/comments/{root['id']}/like").json["data"] == {"like_count": 1, "liked": False}
+
+    # Listings carry the count and the viewer's own `liked` on every node of the tree.
+    items = {c["id"]: c for c in listing(bob, track)["items"]}
+    assert items[root["id"]]["liked"] and items[other["id"]]["liked"]
+    assert items[root["id"]]["replies"][0]["like_count"] == 1 and items[root["id"]]["replies"][0]["liked"]
+    anon = {c["id"]: c for c in listing(app.test_client(), track)["items"]}
+    assert anon[root["id"]]["like_count"] == 1 and anon[root["id"]]["liked"] is False
+    assert bob.get(f"/api/comments/{r1['id']}").json["data"]["liked"] is True
+
+    # Comment likes don't touch the track's likes, and vice versa.
+    assert bob.get(f"/api/music/{track}").json["data"]["like_count"] == 0
+
+
+def test_comment_like_requires_login_and_existing_comment(admin, app, track):
+    c = comment(admin, track)
+    assert app.test_client().put(f"/api/comments/{c['id']}/like").status_code == 401
+    assert admin.put("/api/comments/9999/like").status_code == 404
+
+
+def test_comment_likes_removed_with_comment_track_and_user(admin, app, track):
+    bob = register(app.test_client(), "bob")
+    root = comment(admin, track)
+    child = reply(bob, root["id"])
+    keep = comment(bob, track)
+    for cid in (root["id"], child["id"], keep["id"]):
+        admin.put(f"/api/comments/{cid}/like")
+        bob.put(f"/api/comments/{cid}/like")
+    admin.put(f"/api/music/{track}/like")
+
+    assert admin.delete(f"/api/comments/{root['id']}").status_code == 200  # with its reply
+    with app.app_context():
+        assert {lk.target_id for lk in Like.query.filter_by(target_type="comment")} == {keep["id"]}
+
+    bob_id = bob.get("/api/auth/me").json["data"]["user_id"]
+    assert admin.delete(f"/api/users/{bob_id}").status_code == 200  # bob's comment and likes go
+    with app.app_context():
+        assert Like.query.filter_by(target_type="comment").count() == 0
+        assert Like.query.count() == 1  # admin's like on the track
+    last = comment(admin, track)
+    admin.put(f"/api/comments/{last['id']}/like")
+
+    assert admin.delete(f"/api/music/{track}").status_code == 200
+    with app.app_context():
+        assert Like.query.count() == 0

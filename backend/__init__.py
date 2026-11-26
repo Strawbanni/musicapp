@@ -94,6 +94,26 @@ def _upgrade_schema(app):
             app.logger.warning("Adding missing column %s.%s", table, column)
             with db.engine.begin() as conn:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+    _migrate_music_likes(app, insp)
+
+
+def _migrate_music_likes(app, insp):
+    """Move rows from the old music-only `music_likes` table into the shared `likes` table.
+
+    Rows already present are skipped, so a run interrupted between the copy and the drop is safe
+    to repeat (MySQL commits DDL implicitly, so both steps can't share one transaction).
+    """
+    if "music_likes" not in insp.get_table_names():
+        return
+    app.logger.warning("Migrating music_likes into likes")
+    with db.engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO likes (user_id, target_type, target_id, created_at) "
+            "SELECT ml.user_id, 'music', ml.music_id, ml.created_at FROM music_likes ml "
+            "WHERE NOT EXISTS (SELECT 1 FROM likes l WHERE l.user_id = ml.user_id "
+            "AND l.target_type = 'music' AND l.target_id = ml.music_id)"))
+    with db.engine.begin() as conn:
+        conn.execute(text("DROP TABLE music_likes"))
 
 
 def _seed_admin(app):

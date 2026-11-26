@@ -316,6 +316,11 @@ input.autofilled, textarea.autofilled { border-color: rgba(91,141,239,.7); backg
 .comment-actions { display: flex; gap: 14px; color: var(--muted); }
 .comment-actions a:hover { color: var(--green); }
 .comment-actions .danger-link:hover { color: var(--danger); }
+.comment-like { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.comment-like .heart::before { content: "♡"; }
+.comment-like.liked, .comment-like.liked:hover { color: #ff5a7a; }
+.comment-like.liked .heart::before { content: "♥"; }
+.comment-like.busy { pointer-events: none; opacity: .6; }
 .comment-replies { margin-top: 4px; padding-left: 4px; border-left: 2px solid var(--border); }
 .comment-replies .comment { padding: 8px 0 8px 10px; }
 .comment-more { text-align: center; margin-top: 12px; }

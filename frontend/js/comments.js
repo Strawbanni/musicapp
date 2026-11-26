@@ -1,5 +1,7 @@
 // Comment section on the track detail page: post comments, reply to any comment (unlimited
-// nesting), delete your own (admins: any), collapse threads and load older comments.
+// nesting), like / unlike any number of comments, delete your own (admins: any), collapse threads
+// and load older comments. Only top-level comments are shown at first; each thread's replies stay
+// folded until "View N replies" is clicked.
 import { $, api, esc, state, toast } from "./core.js";
 import { openAuth } from "./auth.js";
 
@@ -7,7 +9,10 @@ const MAX_LEN = 1000;
 const MAX_INDENT = 4; // deeper replies are shown flat (with "▸ @user") so threads stay readable
 const PAGE_SIZE = 10;
 
-const cs = { targetId: null, roots: [], hasMore: false, count: 0, collapsed: new Set(), loading: false };
+// expanded: top-level comments whose thread is open (all folded by default).
+// collapsed: replies whose own sub-thread was hidden again with "Hide replies" (open by default).
+const cs = { targetId: null, roots: [], hasMore: false, count: 0, expanded: new Set(), collapsed: new Set(), loading: false };
+const liking = new Set(); // comment ids with a like request in flight
 let seq = 0;
 
 // ---------- data helpers ----------
@@ -18,6 +23,24 @@ function findNode(id, nodes = cs.roots, parent = null) {
     if (hit) return hit;
   }
   return null;
+}
+
+/** Id of the top-level comment whose thread contains `id`. */
+function rootOf(id) {
+  let hit = findNode(id);
+  while (hit?.parent) hit = findNode(hit.parent.id);
+  return hit?.node.id;
+}
+
+function isOpen(id, depth) {
+  return depth === 0 ? cs.expanded.has(id) : !cs.collapsed.has(id);
+}
+
+/** Show the thread down to comment `id` (e.g. after replying to it). */
+function reveal(id) {
+  const root = rootOf(id);
+  if (root != null) cs.expanded.add(root);
+  for (let hit = findNode(id); hit; hit = hit.parent && findNode(hit.parent.id)) cs.collapsed.delete(hit.node.id);
 }
 
 function recount(nodes) {
@@ -45,7 +68,8 @@ function commentHtml(n, depth) {
   const me = state.user;
   const canDelete = me && (me.user_id === n.user_id || me.is_admin);
   const nested = depth < MAX_INDENT;
-  const collapsed = cs.collapsed.has(n.id);
+  const collapsed = !isOpen(n.id, depth);
+  const count = `${n.reply_count} ${n.reply_count === 1 ? "reply" : "replies"}`;
   // Name the person being answered when it isn't obvious from the indentation.
   const showReplyTo = n.reply_to && (depth >= 2 || !nested);
   const children = n.replies.map((r) => commentHtml(r, depth + 1)).join("");
@@ -60,8 +84,10 @@ function commentHtml(n, depth) {
         </div>
         <div class="comment-text">${esc(n.content)}</div>
         <div class="comment-actions small">
+          <a data-act="like" class="comment-like${n.liked ? " liked" : ""}${liking.has(n.id) ? " busy" : ""}"
+             role="button" aria-pressed="${!!n.liked}" title="${!me ? "Log in to like" : n.liked ? "Unlike" : "Like"}"><span class="heart"></span>${n.like_count || ""}</a>
           <a data-act="reply">Reply</a>
-          ${nested && n.reply_count ? `<a data-act="toggle">${collapsed ? `Show ${n.reply_count} ${n.reply_count === 1 ? "reply" : "replies"}` : "Hide replies"}</a>` : ""}
+          ${nested && n.reply_count ? `<a data-act="toggle" data-depth="${depth}">${collapsed ? `${depth === 0 ? "View" : "Show"} ${count}` : "Hide replies"}</a>` : ""}
           ${canDelete ? `<a data-act="delete" class="danger-link">Delete</a>` : ""}
         </div>
         <div class="reply-slot"></div>
@@ -88,6 +114,7 @@ function render() {
 export async function showComments(trackId) {
   const my = ++seq;
   Object.assign(cs, { targetId: trackId, roots: [], hasMore: false, count: 0, loading: true });
+  cs.expanded.clear();
   cs.collapsed.clear();
   render();
   try {
@@ -138,7 +165,7 @@ async function submit(form, parentId) {
       const hit = findNode(parentId);
       if (hit) {
         hit.node.replies.push(c);
-        cs.collapsed.delete(parentId);
+        reveal(parentId); // so the new reply is visible
       }
     } else {
       cs.roots.unshift(c);
@@ -176,6 +203,26 @@ async function remove(id) {
   }
 }
 
+async function toggleLike(id) {
+  if (!state.user) { openAuth("login"); return; }
+  const hit = findNode(id);
+  if (!hit || liking.has(id)) return;
+  const my = seq;
+  liking.add(id);
+  render();
+  try {
+    const res = await api(hit.node.liked ? "DELETE" : "PUT", `/api/comments/${id}/like`);
+    if (my !== seq) return;
+    const again = findNode(id); // the tree may have changed while waiting
+    if (again) Object.assign(again.node, res);
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    liking.delete(id);
+    if (my === seq) render();
+  }
+}
+
 function openReply(commentEl) {
   if (!state.user) { openAuth("login"); return; }
   const slot = commentEl.querySelector(":scope > .comment-body > .reply-slot");
@@ -195,10 +242,12 @@ section.addEventListener("click", (e) => {
   const id = el ? +el.dataset.id : null;
   if (act === "login") openAuth("login");
   else if (act === "reply") openReply(el);
+  else if (act === "like") toggleLike(id);
   else if (act === "cancel") e.target.closest(".reply-slot").innerHTML = "";
   else if (act === "delete") remove(id);
   else if (act === "toggle") {
-    if (cs.collapsed.has(id)) cs.collapsed.delete(id); else cs.collapsed.add(id);
+    const set = +e.target.closest("[data-act]").dataset.depth === 0 ? cs.expanded : cs.collapsed;
+    if (set.has(id)) set.delete(id); else set.add(id);
     render();
   }
 });

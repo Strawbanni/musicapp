@@ -167,7 +167,7 @@ def test_like_requires_login_and_existing_track(admin, app):
 
 
 def test_likes_removed_with_track_and_user(admin, app):
-    from backend.models import MusicLike
+    from backend.models import Like
     mid = create(admin).json["data"]["id"]
     bob = register(app.test_client(), "bob")
     bob.put(f"/api/music/{mid}/like")
@@ -178,4 +178,27 @@ def test_likes_removed_with_track_and_user(admin, app):
     assert admin.get(f"/api/music/{mid}").json["data"]["like_count"] == 1
     assert admin.delete(f"/api/music/{mid}").status_code == 200
     with app.app_context():
-        assert MusicLike.query.count() == 0
+        assert Like.query.count() == 0
+
+
+def test_old_music_likes_table_is_migrated(tmp_path):
+    import sqlite3
+    from backend.models import Like
+    db_file = tmp_path / "old.db"
+    cfg = {"TESTING": True, "SQLALCHEMY_DATABASE_URI": f"sqlite:///{db_file}",
+           "UPLOAD_FOLDER": str(tmp_path / "uploads")}
+    create_app(cfg)  # creates the current schema and the admin (user_id 1)
+    con = sqlite3.connect(db_file)
+    con.execute("CREATE TABLE music_likes (user_id INTEGER, music_id INTEGER, created_at DATETIME,"
+                " PRIMARY KEY (user_id, music_id))")
+    con.execute("INSERT INTO music_likes VALUES (1, 7, '2024-01-01 00:00:00'), (1, 8, '2024-01-02 00:00:00')")
+    con.commit()
+    con.close()
+
+    app = create_app(cfg)
+    with app.app_context():
+        rows = {(lk.user_id, lk.target_type, lk.target_id) for lk in Like.query}
+    assert rows == {(1, "music", 7), (1, "music", 8)}
+    con = sqlite3.connect(db_file)
+    assert con.execute("SELECT name FROM sqlite_master WHERE name='music_likes'").fetchone() is None
+    con.close()

@@ -2,7 +2,7 @@
 
 Public:  GET /api/music, GET /api/music/genres, GET /api/music/<id>
          GET /media/audio/<file>, GET /media/covers/<file>
-User:    PUT /api/music/<id>/like, DELETE /api/music/<id>/like (idempotent like / unlike)
+User:    PUT /api/music/<id>/like, DELETE /api/music/<id>/like (idempotent like / unlike, see likes.py)
 Comments on a track: see comments.py (target_type="music"); they are removed with the track.
 Admin:   POST /api/music/inspect, POST /api/music, PUT /api/music/<id>, DELETE /api/music/<id>
 
@@ -30,12 +30,12 @@ from pathlib import Path
 
 from flask import Blueprint, abort, current_app, request, send_from_directory
 from sqlalchemy import or_
-from sqlalchemy.exc import IntegrityError
 
 from .audiometa import read_metadata
 from .comments import delete_target_comments
 from .common import admin_required, current_user, fail, login_required, ok, paginate_args
-from .models import Music, MusicLike, db
+from .likes import delete_likes, like_info, like_route
+from .models import Music, db
 
 bp = Blueprint("music", __name__)
 
@@ -178,42 +178,24 @@ def get_music(mid):
     music = db.session.get(Music, mid)
     if music is None:
         return fail("Track not found", 404)
-    return ok({**music.to_dict(), **like_info(music.id, current_user())})
+    return ok({**music.to_dict(), **like_info("music", music.id, current_user())})
 
 
 # ---------- likes ----------
 
-def like_info(mid, user):
-    count = db.session.query(db.func.count()).filter(MusicLike.music_id == mid).scalar()
-    liked = user is not None and db.session.get(MusicLike, (user.user_id, mid)) is not None
-    return {"like_count": count, "liked": liked}
-
-
-def set_like(user, mid, liked):
-    if db.session.get(Music, mid) is None:
-        return fail("Track not found", 404)
-    existing = db.session.get(MusicLike, (user.user_id, mid))
-    if liked and existing is None:
-        db.session.add(MusicLike(user_id=user.user_id, music_id=mid))
-    elif not liked and existing is not None:
-        db.session.delete(existing)
-    try:
-        db.session.commit()
-    except IntegrityError:  # a concurrent request already liked it; the end state is the same
-        db.session.rollback()
-    return ok(like_info(mid, user))
+_set_like = like_route(Music, "music", "Track not found")
 
 
 @bp.put("/api/music/<int:mid>/like")
 @login_required
 def like_music(user, mid):
-    return set_like(user, mid, True)
+    return _set_like(user, mid, True)
 
 
 @bp.delete("/api/music/<int:mid>/like")
 @login_required
 def unlike_music(user, mid):
-    return set_like(user, mid, False)
+    return _set_like(user, mid, False)
 
 
 # ---------- admin ----------
@@ -356,7 +338,9 @@ def delete_music(_admin, mid):
     if music is None:
         return fail("Track not found", 404)
     audio, cover = music.audio_file, music.cover_image
-    delete_target_comments("music", mid)  # comments have no FK to the track (targetId is polymorphic)
+    # Comments and likes have no FK to the track (their target id is polymorphic).
+    delete_target_comments("music", mid)  # also removes the likes on those comments
+    delete_likes("music", [mid])
     db.session.delete(music)
     db.session.commit()
     delete_upload(audio, "audio")

@@ -16,7 +16,7 @@ class User(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.now)
 
-    likes = db.relationship("MusicLike", backref="user", cascade="all, delete-orphan")
+    likes = db.relationship("Like", backref="user", cascade="all, delete-orphan")
 
     def set_password(self, raw: str) -> None:
         self.password = generate_password_hash(raw)
@@ -50,8 +50,6 @@ class Music(db.Model):
     lyrics = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.now)
 
-    likes = db.relationship("MusicLike", backref="music", cascade="all, delete-orphan")
-
     def to_dict(self, with_lyrics=True) -> dict:
         """with_lyrics=False keeps list responses small; `has_lyrics` is always present."""
         d = {
@@ -73,12 +71,21 @@ class Music(db.Model):
         return d
 
 
-class MusicLike(db.Model):
-    """A user liking a track. The composite primary key makes each like unique per user."""
-    __tablename__ = "music_likes"
+class Like(db.Model):
+    """A user liking a target (a track, a comment, ...).
+
+    Polymorphic like Comment: (target_type, target_id) names the liked row, so target_id has no
+    foreign key; likes are removed by the app when their target is deleted (see likes.delete_likes).
+    The composite primary key makes each like unique per user and target.
+    """
+    __tablename__ = "likes"
+    __table_args__ = (
+        db.Index("ix_likes_target", "target_type", "target_id"),
+    )
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True)
-    music_id = db.Column(db.Integer, db.ForeignKey("music.id", ondelete="CASCADE"), primary_key=True, index=True)
+    target_type = db.Column(db.String(20), primary_key=True)
+    target_id = db.Column(db.Integer, primary_key=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.now)
 
 

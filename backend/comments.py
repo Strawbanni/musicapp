@@ -10,13 +10,18 @@ Public:  GET /api/comments?target_type=music&target_id=<id>&page=&size=[&before_
 User:    POST /api/comments           JSON {target_type, target_id, content} for a new comment,
                                       or {parent_id, content} for a reply (target is inherited).
          DELETE /api/comments/<id>    Author or admin; removes the comment and all its replies.
+         PUT /api/comments/<id>/like, DELETE /api/comments/<id>/like
+                                      Idempotent like / unlike (any number of comments, see likes.py);
+                                      returns {like_count, liked}.
 
 Every comment dict has: id, user_id, username, target_type, target_id, parent_id, content,
-publish_time, reply_to ({user_id, username} of the parent's author, or null), replies, reply_count.
+publish_time, reply_to ({user_id, username} of the parent's author, or null), replies, reply_count,
+like_count and liked (whether the logged-in user likes it; false when logged out).
 """
 from flask import Blueprint, request
 
-from .common import fail, is_admin, login_required, ok, paginate_args
+from .common import current_user, fail, is_admin, login_required, ok, paginate_args
+from .likes import delete_likes, like_infos, like_route
 from .models import Comment, Music, User, db
 
 bp = Blueprint("comments", __name__, url_prefix="/api")
@@ -67,6 +72,10 @@ def _build_trees(roots):
         node["reply_count"] = sum(1 + count(r) for r in node["replies"])
         return node["reply_count"]
 
+    # Like counts and the viewer's own likes for the whole batch at once (no query per comment).
+    for cid, info in like_infos("comment", nodes, current_user()).items():
+        nodes[cid].update(info)
+
     trees = [nodes[c.id] for c, _ in roots]
     for t in trees:
         count(t)
@@ -105,6 +114,7 @@ def delete_comment_trees(ids):
     for d in sorted(levels, reverse=True):
         for chunk in _chunks(levels[d]):
             Comment.query.filter(Comment.id.in_(chunk)).delete(synchronize_session=False)
+    delete_likes("comment", parent_of)  # likes have no FK to the comment
     return len(parent_of)
 
 
@@ -216,7 +226,8 @@ def create_comment(user):
     db.session.add(comment)
     db.session.commit()
 
-    data = {**comment.to_dict(user.username), "replies": [], "reply_count": 0, "reply_to": None}
+    data = {**comment.to_dict(user.username), "replies": [], "reply_count": 0, "reply_to": None,
+            "like_count": 0, "liked": False}
     if parent is not None:
         parent_author = db.session.get(User, parent.user_id)
         data["reply_to"] = {"user_id": parent.user_id,
@@ -235,3 +246,18 @@ def delete_comment(user, cid):
     removed = delete_comment_trees([cid])
     db.session.commit()
     return ok({"deleted": removed}, "Comment deleted")
+
+
+_set_like = like_route(Comment, "comment", "Comment not found")
+
+
+@bp.put("/comments/<int:cid>/like")
+@login_required
+def like_comment(user, cid):
+    return _set_like(user, cid, True)
+
+
+@bp.delete("/comments/<int:cid>/like")
+@login_required
+def unlike_comment(user, cid):
+    return _set_like(user, cid, False)
