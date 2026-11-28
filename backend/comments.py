@@ -20,6 +20,7 @@ like_count and liked (whether the logged-in user likes it; false when logged out
 """
 from flask import Blueprint, request
 
+from . import leaderboard
 from .common import current_user, fail, is_admin, login_required, ok, paginate_args
 from .likes import delete_likes, like_infos, like_route
 from .models import Comment, Music, User, db
@@ -230,6 +231,8 @@ def create_comment(user):
         db.session.flush()  # assigns comment.id
         reply_posted(comment, parent)
     db.session.commit()
+    if target_type == leaderboard.TARGET:
+        leaderboard.comments_added(target_id)
 
     data = {**comment.to_dict(user.username), "replies": [], "reply_count": 0, "reply_to": None,
             "like_count": 0, "liked": False}
@@ -248,8 +251,11 @@ def delete_comment(user, cid):
         return fail("Comment not found", 404)
     if comment.user_id != user.user_id and not is_admin(user):
         return fail("You can only delete your own comments", 403)
+    target_type, target_id = comment.target_type, comment.target_id  # a tree shares one target
     removed = delete_comment_trees([cid])
     db.session.commit()
+    if target_type == leaderboard.TARGET:
+        leaderboard.comments_removed(target_id, removed)
     return ok({"deleted": removed}, "Comment deleted")
 
 

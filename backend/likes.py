@@ -11,6 +11,7 @@ delete_likes() for it (music.delete_music and comments.delete_comment_trees do).
 """
 from sqlalchemy.exc import IntegrityError
 
+from . import leaderboard
 from .common import fail, ok
 from .models import Like, db
 from .notifications import like_changed
@@ -50,6 +51,7 @@ def set_like(user, target_type, target_id, liked):
     """Like or unlike a target that the caller has verified exists. Returns the API response."""
     key = (user.user_id, target_type, target_id)
     existing = db.session.get(Like, key)
+    changed = (existing is None) == liked
     if liked and existing is None:
         db.session.add(Like(user_id=user.user_id, target_type=target_type, target_id=target_id))
         like_changed(user, target_type, target_id, True)  # notify the author (same transaction)
@@ -60,6 +62,9 @@ def set_like(user, target_type, target_id, liked):
         db.session.commit()
     except IntegrityError:  # a concurrent request already liked (and notified); the end state is the same
         db.session.rollback()
+        changed = False  # ...and that request scores the like
+    if changed and target_type == leaderboard.TARGET:
+        leaderboard.like_changed(target_id, liked)
     return ok(like_info(target_type, target_id, user))
 
 

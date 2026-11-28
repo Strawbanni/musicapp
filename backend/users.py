@@ -9,9 +9,10 @@ import re
 from flask import Blueprint, request, session
 from sqlalchemy import or_
 
+from . import leaderboard
 from .comments import delete_user_comments
 from .common import admin_required, current_user, fail, is_admin, login_required, ok, paginate_args
-from .models import User, db
+from .models import Comment, Like, User, db
 from .notifications import delete_user_notifications
 
 bp = Blueprint("users", __name__, url_prefix="/api")
@@ -255,8 +256,14 @@ def delete_user(admin, uid):
     user = db.session.get(User, uid)
     if user is None:
         return fail("User not found", 404)
+    # Tracks whose score drops: ones the user liked or commented on (a reply tree lives on one track).
+    scored = {tid for (tid,) in db.session.query(Like.target_id).filter(
+        Like.user_id == uid, Like.target_type == leaderboard.TARGET)}
+    scored |= {tid for (tid,) in db.session.query(Comment.target_id).filter(
+        Comment.user_id == uid, Comment.target_type == leaderboard.TARGET).distinct()}
     delete_user_comments(uid)  # with the replies under them; deepest first, see comments.py
     delete_user_notifications(uid)  # sent to or caused by the user
     db.session.delete(user)
     db.session.commit()
+    leaderboard.refresh(scored)  # recompute those scores exactly
     return ok(msg="User deleted")

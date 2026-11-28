@@ -4,3 +4,5 @@ PyMySQL>=1.1
 cryptography>=42  # required by PyMySQL for MySQL 8 caching_sha2_password auth
 python-dotenv>=1.0
 mutagen>=1.47  # reads audio tags / duration / embedded cover on upload
+redis>=5.0  # track leaderboard (sorted set), see backend/leaderboard.py
+# tests also need: pytest, fakeredis

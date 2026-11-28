@@ -31,6 +31,7 @@ from pathlib import Path
 from flask import Blueprint, abort, current_app, request, send_from_directory
 from sqlalchemy import or_
 
+from . import leaderboard
 from .audiometa import read_metadata
 from .comments import delete_target_comments
 from .common import admin_required, current_user, fail, login_required, ok, paginate_args
@@ -265,6 +266,7 @@ def create_music(_admin):
         db.session.rollback()
         _discard(saved)
         raise
+    leaderboard.track_added(music.id)  # score 0
     return ok(music.to_dict(), "Track created", 201)
 
 
@@ -343,6 +345,7 @@ def delete_music(_admin, mid):
     delete_likes("music", [mid])
     db.session.delete(music)
     db.session.commit()
+    leaderboard.track_removed(mid)
     delete_upload(audio, "audio")
     delete_upload(cover, "covers")
     return ok(msg="Track deleted")

@@ -7,6 +7,7 @@ from flask import Flask, send_from_directory
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
 
+from . import leaderboard
 from .comments import bp as comments_bp
 from .common import fail
 from .models import User, db
@@ -48,15 +49,19 @@ def create_app(test_config=None):
         ADMIN_DEFAULT_PASSWORD=os.environ.get("ADMIN_DEFAULT_PASSWORD", "admin123"),
         UPLOAD_FOLDER=os.environ.get("UPLOAD_FOLDER", str(BASE_DIR / "uploads")),
         MAX_CONTENT_LENGTH=int(os.environ.get("MAX_UPLOAD_MB", "50")) * 1024 * 1024,
+        REDIS_URL=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        LEADERBOARD_KEY=os.environ.get("LEADERBOARD_KEY", leaderboard.DEFAULT_KEY),
     )
     if test_config:
         app.config.update(test_config)
 
     db.init_app(app)
+    leaderboard.init_app(app)
     app.register_blueprint(users_bp)
     app.register_blueprint(music_bp)
     app.register_blueprint(comments_bp)
     app.register_blueprint(notifications_bp)
+    app.register_blueprint(leaderboard.bp)
 
     @app.errorhandler(413)
     def too_large(_e):
@@ -73,6 +78,7 @@ def create_app(test_config=None):
         db.create_all()
         _upgrade_schema(app)
         _seed_admin(app)
+        _rebuild_leaderboard(app)
 
     @app.get("/")
     def index():
@@ -176,6 +182,15 @@ def _migrate_notifications(app, insp):
                 "AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.id = o.id)"))
     with db.engine.begin() as conn:
         conn.execute(text("DROP TABLE notifications_old"))
+
+
+def _rebuild_leaderboard(app):
+    """Bring the Redis leaderboard in line with the database (it may have missed updates while
+    Redis was down, or Redis may be empty). The app still starts if Redis is unreachable."""
+    try:
+        leaderboard.rebuild()
+    except Exception as e:  # redis.RedisError, or a bad REDIS_URL
+        app.logger.warning("Leaderboard not rebuilt, Redis unavailable: %s", e)
 
 
 def _seed_admin(app):
