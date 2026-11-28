@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .common import fail, ok
 from .models import Like, db
+from .notifications import like_changed
 
 _CHUNK = 500  # max ids per IN (...) clause
 
@@ -51,11 +52,13 @@ def set_like(user, target_type, target_id, liked):
     existing = db.session.get(Like, key)
     if liked and existing is None:
         db.session.add(Like(user_id=user.user_id, target_type=target_type, target_id=target_id))
+        like_changed(user, target_type, target_id, True)  # notify the author (same transaction)
     elif not liked and existing is not None:
         db.session.delete(existing)
+        like_changed(user, target_type, target_id, False)  # withdraw that notification
     try:
         db.session.commit()
-    except IntegrityError:  # a concurrent request already liked it; the end state is the same
+    except IntegrityError:  # a concurrent request already liked (and notified); the end state is the same
         db.session.rollback()
     return ok(like_info(target_type, target_id, user))
 

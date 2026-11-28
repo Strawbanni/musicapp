@@ -324,3 +324,44 @@ input.autofilled, textarea.autofilled { border-color: rgba(91,141,239,.7); backg
 .comment-replies { margin-top: 4px; padding-left: 4px; border-left: 2px solid var(--border); }
 .comment-replies .comment { padding: 8px 0 8px 10px; }
 .comment-more { text-align: center; margin-top: 12px; }
+
+/* Notifications (bell in the topbar) */
+.topbar-right { display: flex; align-items: center; gap: 18px; }
+.notif { position: relative; }
+.notif-bell {
+  position: relative; width: 36px; height: 36px; border-radius: 50%; border: none; background: none;
+  color: #c8c8cf; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.notif-bell:hover, .notif-bell[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
+.notif-badge {
+  position: absolute; top: 1px; right: -2px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 600;
+  line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--bg);
+}
+.notif-panel {
+  position: absolute; top: 46px; right: -8px; width: 360px; max-height: 480px; display: flex;
+  flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+  z-index: 30; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+.notif-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.notif-list { overflow-y: auto; flex: 1; }
+.notif-item {
+  display: flex; gap: 10px; padding: 11px 14px; cursor: pointer; border-bottom: 1px solid var(--border);
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: var(--bg-hover); }
+.notif-item .avatar { cursor: pointer; }
+.notif-body { flex: 1; min-width: 0; font-size: 13px; line-height: 1.45; }
+.notif-quote {
+  color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.notif-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.notif-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-top: 6px; flex-shrink: 0; }
+.notif-item.read .notif-dot { visibility: hidden; }
+.notif-item.read .notif-body > div:first-child { color: var(--muted); }
+.notif-foot { padding: 6px; text-align: center; }
+.notif-foot:has(.hidden) { padding: 0; }
+.notif-list .empty { padding: 30px 14px; }

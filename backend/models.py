@@ -124,3 +124,31 @@ class Comment(db.Model):
             "content": self.content,
             "publish_time": self.publish_time.strftime("%Y-%m-%d %H:%M:%S"),
         }
+
+
+class Notification(db.Model):
+    """A system message for `targetUserId` about something `sourceUserId` did to their content.
+
+    Column names follow the requested schema (sourceUserId, operationType, ...); Python attributes
+    are snake_case like Comment. operationType is what happened ("like", "reply"); targetType and
+    targetId name the operated target, e.g. ("comment", <id of the liked / replied-to comment>).
+    targetId has no foreign key because it is polymorphic (like Comment/Like); rows are removed by
+    the app together with their target, the reply that caused them, or either user (see
+    notifications.py), and a "like" notification disappears again when the like is withdrawn.
+    """
+    __tablename__ = "notifications"
+    __table_args__ = (
+        db.Index("ix_notifications_target_user_read", "targetUserId", "isRead"),
+        db.Index("ix_notifications_target", "targetType", "targetId"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    source_user_id = db.Column("sourceUserId", db.Integer, db.ForeignKey("users.user_id", ondelete="CASCADE"),
+                               nullable=False, index=True)
+    target_user_id = db.Column("targetUserId", db.Integer, db.ForeignKey("users.user_id", ondelete="CASCADE"),
+                               nullable=False)
+    operation_type = db.Column("operationType", db.String(20), nullable=False)
+    target_type = db.Column("targetType", db.String(20), nullable=False)
+    target_id = db.Column("targetId", db.Integer, nullable=False)
+    is_read = db.Column("isRead", db.Boolean, nullable=False, default=False)
+    create_time = db.Column("createTime", db.DateTime, nullable=False, default=datetime.now)

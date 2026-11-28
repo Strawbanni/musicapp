@@ -5,6 +5,7 @@ import { openLibrary } from "./music.js";
 import "./player.js";
 import "./detail.js";
 import "./users.js";
+import "./notifications.js";
 
 onLoginRequired(() => openAuth("login"));
 

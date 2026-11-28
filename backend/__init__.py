@@ -11,6 +11,7 @@ from .comments import bp as comments_bp
 from .common import fail
 from .models import User, db
 from .music import bp as music_bp
+from .notifications import bp as notifications_bp
 from .users import bp as users_bp
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -55,6 +56,7 @@ def create_app(test_config=None):
     app.register_blueprint(users_bp)
     app.register_blueprint(music_bp)
     app.register_blueprint(comments_bp)
+    app.register_blueprint(notifications_bp)
 
     @app.errorhandler(413)
     def too_large(_e):
@@ -95,6 +97,7 @@ def _upgrade_schema(app):
             with db.engine.begin() as conn:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
     _migrate_music_likes(app, insp)
+    _migrate_notifications(app, insp)
 
 
 def _migrate_music_likes(app, insp):
@@ -114,6 +117,65 @@ def _migrate_music_likes(app, insp):
             "AND l.target_type = 'music' AND l.target_id = ml.music_id)"))
     with db.engine.begin() as conn:
         conn.execute(text("DROP TABLE music_likes"))
+
+
+# Earlier `notifications` layouts -> SELECT column names for
+# (sourceUserId, targetUserId, operation, comment id, isRead, createTime).
+# In both, the stored comment id of a "reply" row is the reply itself; the current layout stores
+# the replied-to comment, so the copy looks up the reply's parentId.
+_OLD_NOTIFICATION_LAYOUTS = {
+    "kind": ("actor_id", "user_id", "kind", "comment_id", "is_read", "created_at"),
+    "targetType": ("sourceUserId", "targetUserId", "targetType", "targetId", "isRead", "createTime"),
+}
+
+
+def _old_notification_layout(columns):
+    if "operationType" in columns:
+        return None  # current layout
+    for marker, cols in _OLD_NOTIFICATION_LAYOUTS.items():
+        if marker in columns:
+            return cols
+    return None
+
+
+def _migrate_notifications(app, insp):
+    """Convert an earlier `notifications` layout to the current one (sourceUserId, targetUserId,
+    operationType, targetType, targetId, isRead, createTime): rename the old table, create the new
+    one, copy the rows, drop the old table. A run interrupted after the rename resumes from
+    `notifications_old`.
+    """
+    tables = insp.get_table_names()
+    if "notifications" in tables and \
+            _old_notification_layout({c["name"] for c in insp.get_columns("notifications")}):
+        app.logger.warning("Migrating notifications to the new column layout")
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE notifications RENAME TO notifications_old"))
+        tables.append("notifications_old")
+    if "notifications_old" not in tables:
+        return
+    insp = inspect(db.engine)
+    cols = _old_notification_layout({c["name"] for c in insp.get_columns("notifications_old")})
+    # SQLite index names are database-wide and moved with the renamed table: drop them so they
+    # can't clash with the new table's. (MySQL index names are per table, nothing to do.)
+    if db.engine.dialect.name == "sqlite":
+        for ix in insp.get_indexes("notifications_old"):
+            with db.engine.begin() as conn:
+                conn.execute(text(f'DROP INDEX IF EXISTS "{ix["name"]}"'))
+    db.create_all()
+    if cols:
+        src, dst, op, cid, read, created = cols
+        # Rows whose comment no longer exists are dropped (they could not be shown anyway).
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO notifications (id, sourceUserId, targetUserId, operationType, targetType, "
+                "targetId, isRead, createTime) "
+                f"SELECT o.id, o.{src}, o.{dst}, o.{op}, 'comment', "
+                f"CASE WHEN o.{op} = 'reply' THEN c.parentId ELSE o.{cid} END, o.{read}, o.{created} "
+                f"FROM notifications_old o JOIN comments c ON c.id = o.{cid} "
+                f"WHERE (o.{op} <> 'reply' OR c.parentId IS NOT NULL) "
+                "AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.id = o.id)"))
+    with db.engine.begin() as conn:
+        conn.execute(text("DROP TABLE notifications_old"))
 
 
 def _seed_admin(app):

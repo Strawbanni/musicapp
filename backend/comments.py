@@ -23,6 +23,7 @@ from flask import Blueprint, request
 from .common import current_user, fail, is_admin, login_required, ok, paginate_args
 from .likes import delete_likes, like_infos, like_route
 from .models import Comment, Music, User, db
+from .notifications import delete_comment_notifications, reply_posted
 
 bp = Blueprint("comments", __name__, url_prefix="/api")
 
@@ -108,6 +109,7 @@ def delete_comment_trees(ids):
     for cid in sorted(parent_of):
         pid = parent_of[cid]
         depth[cid] = depth[pid] + 1 if pid in depth else 0
+    delete_comment_notifications(parent_of)  # before the comments they reference
     levels = {}
     for cid, d in depth.items():
         levels.setdefault(d, []).append(cid)
@@ -224,6 +226,9 @@ def create_comment(user):
     comment = Comment(user_id=user.user_id, target_type=target_type, target_id=target_id,
                       content=content, parent_id=parent.id if parent else None)
     db.session.add(comment)
+    if parent is not None:
+        db.session.flush()  # assigns comment.id
+        reply_posted(comment, parent)
     db.session.commit()
 
     data = {**comment.to_dict(user.username), "replies": [], "reply_count": 0, "reply_to": None,

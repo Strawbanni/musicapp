@@ -12,6 +12,7 @@ from sqlalchemy import or_
 from .comments import delete_user_comments
 from .common import admin_required, current_user, fail, is_admin, login_required, ok, paginate_args
 from .models import User, db
+from .notifications import delete_user_notifications
 
 bp = Blueprint("users", __name__, url_prefix="/api")
 
@@ -255,6 +256,7 @@ def delete_user(admin, uid):
     if user is None:
         return fail("User not found", 404)
     delete_user_comments(uid)  # with the replies under them; deepest first, see comments.py
+    delete_user_notifications(uid)  # sent to or caused by the user
     db.session.delete(user)
     db.session.commit()
     return ok(msg="User deleted")

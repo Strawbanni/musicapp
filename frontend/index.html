@@ -33,7 +33,23 @@
       <div class="search">
         <span>🔍</span><input id="globalSearch" placeholder="Search songs or artists, press Enter" />
       </div>
-      <div class="user-area" id="userArea"></div>
+      <div class="topbar-right">
+        <div class="notif hidden" id="notifArea">
+          <button class="notif-bell" id="notifBell" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"/></svg>
+            <span class="notif-badge hidden" id="notifBadge"></span>
+          </button>
+          <div class="notif-panel hidden" id="notifPanel">
+            <div class="notif-head">
+              <strong>Notifications</strong>
+              <button class="btn sm" id="notifReadAll">Mark all as read</button>
+            </div>
+            <div class="notif-list" id="notifList"></div>
+            <div class="notif-foot"><button class="btn sm hidden" id="notifMore">Load more</button></div>
+          </div>
+        </div>
+        <div class="user-area" id="userArea"></div>
+      </div>
     </header>
 
     <main class="content">
